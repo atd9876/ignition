@@ -13,7 +13,8 @@
 // limitations under the License.
 
 // The cmdline provider fetches a remote configuration from the URL specified
-// in the kernel boot option "ignition.config.url".
+// in the kernel boot option "ignition.config.url", or from a local device
+// specified by "ignition.config.device" and "ignition.config.path".
 
 package cmdline
 
@@ -27,6 +28,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/coreos/ignition/v2/config/shared/errors"
 	"github.com/coreos/ignition/v2/config/v3_7_experimental/types"
 	"github.com/coreos/ignition/v2/internal/distro"
 	"github.com/coreos/ignition/v2/internal/log"
@@ -62,7 +64,7 @@ var (
 )
 
 func fetchConfig(f *resource.Fetcher) (types.Config, report.Report, error) {
-	opts, err := parseCmdline(f.Logger)
+	opts, err := parseCmdline(f.Logger, distro.KernelCmdlinePath())
 	if err != nil {
 		return types.Config{}, report.Report{}, err
 	}
@@ -82,11 +84,16 @@ func fetchConfig(f *resource.Fetcher) (types.Config, report.Report, error) {
 		return fetchConfigFromDevice(f.Logger, opts)
 	}
 
+	if opts.UserDataPath != "" || opts.DeviceLabel != "" {
+		f.Logger.Warning("both %q and %q must be provided together; ignoring",
+			string(flagDeviceLabel), string(flagUserDataPath))
+	}
+
 	return types.Config{}, report.Report{}, platform.ErrNoProvider
 }
 
-func parseCmdline(logger *log.Logger) (*cmdlineOpts, error) {
-	cmdline, err := os.ReadFile(distro.KernelCmdlinePath())
+func parseCmdline(logger *log.Logger, path string) (*cmdlineOpts, error) {
+	cmdline, err := os.ReadFile(path)
 	if err != nil {
 		logger.Err("couldn't read cmdline: %v", err)
 		return nil, err
@@ -127,7 +134,7 @@ func parseCmdline(logger *log.Logger) (*cmdlineOpts, error) {
 				logger.Info("user data path flag found but no value provided")
 				continue
 			}
-			opts.DeviceLabel = value
+			opts.UserDataPath = value
 		}
 	}
 
@@ -136,34 +143,19 @@ func parseCmdline(logger *log.Logger) (*cmdlineOpts, error) {
 
 func fetchConfigFromDevice(logger *log.Logger, opts *cmdlineOpts) (types.Config, report.Report, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	var data []byte
+	defer cancel()
 
-	dispatch := func(name string, fn func() ([]byte, error)) {
-		raw, err := fn()
-		if err != nil {
-			switch err {
-			case context.Canceled:
-			case context.DeadlineExceeded:
-				logger.Err("timed out while fetching config from %s", name)
-			default:
-				logger.Err("failed to fetch config from %s: %v", name, err)
-			}
-			return
-		}
-
-		data = raw
-		cancel()
-	}
-
-	go dispatch(
-		"load config from disk", func() ([]byte, error) {
-			return tryMounting(logger, ctx, opts)
-		},
-	)
-
-	<-ctx.Done()
-	if ctx.Err() == context.DeadlineExceeded {
+	data, err := tryMounting(logger, ctx, opts)
+	if err == context.DeadlineExceeded {
 		logger.Info("disk was not available in time. Continuing without a config...")
+		return types.Config{}, report.Report{}, errors.ErrEmpty
+	}
+	if err != nil {
+		return types.Config{}, report.Report{}, err
+	}
+	if data == nil {
+		logger.Info("config file %q not found on device. Continuing without config...", opts.UserDataPath)
+		return types.Config{}, report.Report{}, errors.ErrEmpty
 	}
 
 	return util.ParseConfig(logger, data)
@@ -201,6 +193,7 @@ func tryMounting(logger *log.Logger, ctx context.Context, opts *cmdlineOpts) ([]
 	}()
 
 	if !fileExists(filepath.Join(mnt, opts.UserDataPath)) {
+		logger.Debug("config file %q not found on device %q", opts.UserDataPath, opts.DeviceLabel)
 		return nil, nil
 	}
 
