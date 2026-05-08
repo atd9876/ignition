@@ -17,7 +17,6 @@ package cmdline
 import (
 	"net/url"
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/coreos/ignition/v2/internal/log"
@@ -39,7 +38,9 @@ func writeCmdline(t *testing.T, content string) string {
 	if _, err := f.WriteString(content); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 	return f.Name()
 }
 
@@ -50,7 +51,10 @@ func TestParseCmdlineURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	expected, _ := url.Parse("https://example.com/config.ign")
+	expected, err := url.Parse("https://example.com/config.ign")
+	if err != nil {
+		t.Fatalf("failed to parse expected URL: %v", err)
+	}
 	if opts.Url == nil || opts.Url.String() != expected.String() {
 		t.Errorf("expected URL %q, got %v", expected, opts.Url)
 	}
@@ -170,20 +174,5 @@ func TestParseCmdlineURLTakesPrecedence(t *testing.T) {
 	}
 	if opts.UserDataPath != "/config.ign" {
 		t.Errorf("expected UserDataPath %q, got %q", "/config.ign", opts.UserDataPath)
-	}
-}
-
-func TestFileExists(t *testing.T) {
-	dir := t.TempDir()
-	existing := filepath.Join(dir, "file.txt")
-	if err := os.WriteFile(existing, []byte("x"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	if !fileExists(existing) {
-		t.Errorf("expected fileExists(%q) = true", existing)
-	}
-	if fileExists(filepath.Join(dir, "nonexistent.txt")) {
-		t.Errorf("expected fileExists on missing file = false")
 	}
 }

@@ -20,6 +20,7 @@ package cmdline
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -28,7 +29,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/coreos/ignition/v2/config/shared/errors"
+	configErrors "github.com/coreos/ignition/v2/config/shared/errors"
 	"github.com/coreos/ignition/v2/config/v3_7_experimental/types"
 	"github.com/coreos/ignition/v2/internal/distro"
 	"github.com/coreos/ignition/v2/internal/log"
@@ -101,7 +102,7 @@ func parseCmdline(logger *log.Logger, path string) (*cmdlineOpts, error) {
 
 	opts := &cmdlineOpts{}
 
-	for _, arg := range strings.Split(string(cmdline), " ") {
+	for _, arg := range strings.Fields(string(cmdline)) {
 		parts := strings.SplitN(strings.TrimSpace(arg), "=", 2)
 		if len(parts) != 2 {
 			continue
@@ -117,12 +118,12 @@ func parseCmdline(logger *log.Logger, path string) (*cmdlineOpts, error) {
 				continue
 			}
 
-			url, err := url.Parse(value)
+			parsedURL, err := url.Parse(value)
 			if err != nil {
 				logger.Err("failed to parse url: %v", err)
 				continue
 			}
-			opts.Url = url
+			opts.Url = parsedURL
 		case flagDeviceLabel:
 			if value == "" {
 				logger.Info("device label flag found but no value provided")
@@ -146,16 +147,16 @@ func fetchConfigFromDevice(logger *log.Logger, opts *cmdlineOpts) (types.Config,
 	defer cancel()
 
 	data, err := tryMounting(logger, ctx, opts)
-	if err == context.DeadlineExceeded {
+	if errors.Is(err, context.DeadlineExceeded) {
 		logger.Info("disk was not available in time. Continuing without a config...")
-		return types.Config{}, report.Report{}, errors.ErrEmpty
+		return types.Config{}, report.Report{}, configErrors.ErrEmpty
 	}
 	if err != nil {
 		return types.Config{}, report.Report{}, err
 	}
 	if data == nil {
 		logger.Info("config file %q not found on device. Continuing without config...", opts.UserDataPath)
-		return types.Config{}, report.Report{}, errors.ErrEmpty
+		return types.Config{}, report.Report{}, configErrors.ErrEmpty
 	}
 
 	return util.ParseConfig(logger, data)
@@ -192,12 +193,13 @@ func tryMounting(logger *log.Logger, ctx context.Context, opts *cmdlineOpts) ([]
 		)
 	}()
 
-	if !fileExists(filepath.Join(mnt, opts.UserDataPath)) {
+	configPath := filepath.Join(mnt, filepath.Clean(filepath.Join("/", opts.UserDataPath)))
+	if !fileExists(configPath) {
 		logger.Debug("config file %q not found on device %q", opts.UserDataPath, opts.DeviceLabel)
 		return nil, nil
 	}
 
-	contents, err := os.ReadFile(filepath.Join(mnt, opts.UserDataPath))
+	contents, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, err
 	}
