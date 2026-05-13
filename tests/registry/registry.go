@@ -25,6 +25,7 @@ import (
 	_ "github.com/coreos/ignition/v2/tests/negative/regression"
 	_ "github.com/coreos/ignition/v2/tests/negative/security"
 	_ "github.com/coreos/ignition/v2/tests/negative/timeouts"
+	_ "github.com/coreos/ignition/v2/tests/positive/cmdline"
 	_ "github.com/coreos/ignition/v2/tests/positive/files"
 	_ "github.com/coreos/ignition/v2/tests/positive/filesystems"
 	_ "github.com/coreos/ignition/v2/tests/positive/general"

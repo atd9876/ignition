@@ -86,7 +86,7 @@ var (
 
 func DiskByLabelDir() string { return diskByLabelDir }
 
-func KernelCmdlinePath() string { return kernelCmdlinePath }
+func KernelCmdlinePath() string { return fromEnv("KERNEL_CMDLINE_PATH", kernelCmdlinePath) }
 func BootIDPath() string        { return bootIDPath }
 func SystemConfigDir() string   { return fromEnv("SYSTEM_CONFIG_DIR", systemConfigDir) }
 

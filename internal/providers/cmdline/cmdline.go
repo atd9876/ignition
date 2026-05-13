@@ -148,8 +148,7 @@ func fetchConfigFromDevice(logger *log.Logger, opts *cmdlineOpts) (types.Config,
 
 	data, err := tryMounting(logger, ctx, opts)
 	if errors.Is(err, context.DeadlineExceeded) {
-		logger.Info("disk was not available in time. Continuing without a config...")
-		return types.Config{}, report.Report{}, configErrors.ErrEmpty
+		return types.Config{}, report.Report{}, fmt.Errorf("device %q did not appear within timeout", opts.DeviceLabel)
 	}
 	if err != nil {
 		return types.Config{}, report.Report{}, err
@@ -178,7 +177,11 @@ func tryMounting(logger *log.Logger, ctx context.Context, opts *cmdlineOpts) ([]
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp directory: %v", err)
 	}
-	defer os.Remove(mnt)
+	defer func() {
+		if err := os.Remove(mnt); err != nil {
+			logger.Err("failed to remove temporary mount point %q: %v", mnt, err)
+		}
+	}()
 
 	cmd := exec.Command(distro.MountCmd(), "-o", "ro", "-t", "auto", device, mnt)
 	if _, err := logger.LogCmd(cmd, "mounting disk"); err != nil {
