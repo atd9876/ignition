@@ -29,7 +29,6 @@ import (
 	"strings"
 	"time"
 
-	configErrors "github.com/coreos/ignition/v2/config/shared/errors"
 	"github.com/coreos/ignition/v2/config/v3_7_experimental/types"
 	"github.com/coreos/ignition/v2/internal/distro"
 	"github.com/coreos/ignition/v2/internal/log"
@@ -86,7 +85,7 @@ func fetchConfig(f *resource.Fetcher) (types.Config, report.Report, error) {
 	}
 
 	if opts.UserDataPath != "" || opts.DeviceLabel != "" {
-		f.Logger.Warning("both %q and %q must be provided together; ignoring",
+		return types.Config{}, report.Report{}, fmt.Errorf("both %q and %q must be provided together",
 			string(flagDeviceLabel), string(flagUserDataPath))
 	}
 
@@ -154,8 +153,7 @@ func fetchConfigFromDevice(logger *log.Logger, opts *cmdlineOpts) (types.Config,
 		return types.Config{}, report.Report{}, err
 	}
 	if data == nil {
-		logger.Info("config file %q not found on device. Continuing without config...", opts.UserDataPath)
-		return types.Config{}, report.Report{}, configErrors.ErrEmpty
+		return types.Config{}, report.Report{}, fmt.Errorf("config file %q not found on device %q", opts.UserDataPath, opts.DeviceLabel)
 	}
 
 	return util.ParseConfig(logger, data)

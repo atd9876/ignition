@@ -16,6 +16,7 @@ package registry
 
 // Done to import the tests
 import (
+	_ "github.com/coreos/ignition/v2/tests/negative/cmdline"
 	_ "github.com/coreos/ignition/v2/tests/negative/files"
 	_ "github.com/coreos/ignition/v2/tests/negative/filesystems"
 	_ "github.com/coreos/ignition/v2/tests/negative/general"
